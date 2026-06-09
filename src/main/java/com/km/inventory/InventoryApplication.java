@@ -5,8 +5,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 
 
-//Intentionally sabotaged to test CI/CD pipeline
-// @SpringBootApplication
+
+@SpringBootApplication
 public class InventoryApplication {
 
 	public static void main(String[] args) {
