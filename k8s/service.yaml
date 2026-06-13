@@ -1,0 +1,14 @@
+#SERVICE - manage pod access
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-app
+
+
+spec:
+  selector: 
+    app: inventory-app # Target the pods with this label
+  ports:
+     - port: 80 #The service will expose this port
+       targetPort: 8080 #The app will expose this port
+  type: ClusterIP #Service only reachable inside the cluster

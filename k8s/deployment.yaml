@@ -1,0 +1,48 @@
+# DEPLOYMENT - create and manage the pods
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: inventory-app
+
+
+spec: #The desired state of this deployment 
+  # replicas: 2 # How many pods in this replica set - this gets managed by the HPA
+  selector: # How to find the pods to manage
+    matchLabels:
+      app: inventory-app #They'll have this label
+  template: # What a pod ought to look like
+    metadata:
+      labels:
+        app: inventory-app  #They'll have this name
+    spec: # How the pods ought to be set up
+      containers:
+        - name: inventory-app # Give them this label
+          image: inventory-app:latest # Use this image
+          imagePullPolicy: Never  #Don't try and download the image
+          ports:
+          - containerPort: 8080 #The app will expose port 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef: 
+                  name: inventory-postgres-config 
+                  key: postgres_url
+            - name: SPRING_DATASOURCE_USERNAME #Create an environment variable
+              valueFrom:
+                configMapKeyRef:  # It'll be found in a config map.
+                  name: inventory-postgres-config #This is the name of the ConfigMap
+                  key: postgres_user #This is what the key is named in the ConfigMap
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: 
+                secretKeyRef: # This one will be found in a Secret
+                  name: inventory-postgres-secret
+                  key: postgres_pwd
+          resources:
+            requests: #The minimum requirement for a pod
+              cpu: "100m" #100 milicores
+              memory: "256Mi" #256 'mebi'bytes
+            limits: # maximum allowed resource usage for a pod
+              cpu: "500m"
+              memory: "512Mi"
