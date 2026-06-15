@@ -1,0 +1,8 @@
+package com.km.inventory.category;
+
+public abstract class ResourceNotFoundException extends RuntimeException{
+    public ResourceNotFoundException(String resourceName, Long id) {
+        super(resourceName+" with id "+id+" could not be found.");
+    }
+    
+}
