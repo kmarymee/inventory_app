@@ -2,38 +2,39 @@ name: inventory_workflow
 
 on: 
   push: 
-    branches: [main]
-  pull_request:
+    branches: [main] #Triggers when we push to the main branch
+  pull_request: # Run on every pull request
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    permissions:
+    runs-on: ubuntu-latest # Run this whole thing on the latest ubuntu
+    permissions: # Allows us to interact with the containers
       contents: read
       packages: write
+    strategy:
+      matrix:
+        service: [category-service, product-service] # This will run the build for each image here
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v4 #Clone the repo onto the runner
+      - uses: actions/setup-java@v4 # Install and configure JDK 21
         with:
-          distribution: temurin
+          distribution: temurin # This is the provisioning for the container with java and maven
           java-version: '21'
-          cache: maven
-      - run: ./mvnw -B verify
-      - name: GHCR Login
-        if: github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
+          cache: maven # Cache maven dependencies so we don't have to re-download them.
+      - name: Build and test # The testing phase
+        working-directory: ${{ matrix.service }} # This will look into the service's directory
+        run: ./mvnw -B verify #This will run the tests with maven
+      - name: GHCR Login # This will log in to GHCR to push the containers
+        if: github.ref == 'refs/heads/main' # Only if we're on the main branch
+        uses: docker/login-action@v3 # Authenticate the runner to ghcr.io
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push image
-        if: github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v6
-        with: 
-          context: .
+          registry: ghcr.io # This is where we're sending the containers
+          username: ${{ github.actor }} # Whichever user triggered the action
+          password: ${{ secrets.GITHUB_TOKEN }} # Stored server-side on github
+      - name: Build and push image # The build phase
+        if: github.ref == 'refs/heads/main' #Only if we're on the main branch
+        uses: docker/build-push-action@v6 # Build and push the containers
+        with:
+          context: ${{ matrix.service }} # The build directory
           push: true
-          tags: ghcr.io/kmarymee/inventory_app:latest
-
-
-
-
+          tags: ghcr.io/kmarymee/${{ matrix.service }}:latest #This is exactly where we're sending it.

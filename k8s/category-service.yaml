@@ -1,0 +1,224 @@
+
+
+# App Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: category-service
+
+
+spec: #The desired state of this deployment 
+  # replicas: 2 # How many pods in this replica set - this gets managed by the HPA
+  selector: # How to find the pods to manage
+    matchLabels:
+      app: category-service #They'll have this label
+  template: # What a pod ought to look like
+    metadata:
+      labels:
+        app: category-service  #They'll have this name
+    spec: # How the pods ought to be set up
+      containers:
+        - name: category-service # Give them this label
+          image: category-service:latest # Use this image
+          imagePullPolicy: Never  #Don't try and download the image
+          ports:
+          - containerPort: 8081 #The app will expose port 8081
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef: 
+                  name: category-postgres-config 
+                  key: postgres_url
+            - name: SPRING_DATASOURCE_USERNAME #Create an environment variable
+              valueFrom:
+                configMapKeyRef:  # It'll be found in a config map.
+                  name: category-postgres-config #This is the name of the ConfigMap
+                  key: postgres_user #This is what the key is named in the ConfigMap
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: 
+                secretKeyRef: # This one will be found in a Secret
+                  name: category-postgres-secret
+                  key: postgres_pwd
+          resources:
+            requests: #The minimum requirement for a pod
+              cpu: "100m" #100 milicores
+              memory: "256Mi" #256 'mebi'bytes
+            limits: # maximum allowed resource usage for a pod
+              cpu: "500m"
+              memory: "512Mi"
+---
+
+#SERVICE - manage app pod access
+apiVersion: v1
+kind: Service
+metadata:
+  name: category-service
+
+spec:
+  selector: 
+    app: category-service # Target the pods with this label
+  ports:
+     - port: 8081 #The service will expose this port
+       targetPort: 8081 #The app will expose this port
+  type: ClusterIP #Service only reachable inside the cluster
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--- #POSTGRES
+
+# Postgres Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: category-postgres
+
+spec:
+  replicas: 1 # Only 1 pod for data persistence - never scale something like this
+  selector:
+    matchLabels:
+      app: category-postgres
+  template:
+    metadata:
+      labels:
+        app: category-postgres
+    spec:
+
+      containers:
+        # This'll be the postgres pod
+      - name: postgres 
+        image: postgres:16
+        ports:
+        - containerPort: 5432
+        env:
+          - name: POSTGRES_DB
+            valueFrom:
+              configMapKeyRef: 
+                name: category-postgres-config 
+                key: postgres_db
+          - name: POSTGRES_USER #Create an environment variable
+            valueFrom:
+              configMapKeyRef:  # It'll be found in a config map.
+                name: category-postgres-config #This is the name of the ConfigMap
+                key: postgres_user #This is what the key is named in the ConfigMap
+          - name: POSTGRES_PASSWORD
+            valueFrom: 
+              secretKeyRef: # This one will be found in a Secret
+                name: category-postgres-secret
+                key: postgres_pwd
+          - name: PGDATA 
+            value: /var/lib/postgresql/data/pgdata # Tells postgres where to put the data
+        # These are instructions on how to find the volume we're making    
+        volumeMounts:
+        - name: postgres-data #The name of the volume
+          mountPath: /var/lib/postgresql/data
+
+        # Resource usage config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        
+      # This should define the volume, and connect it to the claim.
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: category-postgres-volume
+            
+---
+# Postgres Service
+# Manage DB connections
+apiVersion: v1
+kind: Service
+metadata:
+  name: category-postgres
+spec:
+  selector:
+    app: category-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+#ConfigMap
+# Configuration settings for postgres
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: category-postgres-config
+data: #Assign the environment variables for DB access
+  postgres_user: inventory
+  postgres_db: inventory
+  postgres_url: jdbc:postgresql://category-postgres:5432/inventory
+---
+# Secret
+# Stores secret config, like passwords
+apiVersion: v1
+kind: Secret
+metadata:
+  name: category-postgres-secret
+type: Opaque # Generic user-defined secret
+stringData:
+  postgres_pwd: "secret" #Just the password environment variable
+
+---
+# PVC - Persistent Volume Claim
+# Let's ask for a volume that can be accessed by 1 pod at a time.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: category-postgres-volume
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi # 1 Gig of storage
+  volumeMode: Filesystem # Default volume setting.
+
+
+
+
+
+
+
+
+
+
+
+
+---
+#HPA - autoscale the app
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: category-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: category-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
